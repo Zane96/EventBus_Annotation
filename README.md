@@ -7,7 +7,9 @@ EventBus
    * EventBus一般在用的时候我们一般直接getDefault，其实可以通过EventBusBuilder这个类进行链式操作来构造EventBus实例，具体请自己查看源码。很重要的一个变量就是**ignoreGeneratedIndex**，如果你通过new EventBusBuilder().ignoreGeneratedIndex(true);这个对象来去构造EventBus，那么EventBus不会通过反射去得到注册函数，而是通过编译时期的注解处理器去获得信息。具体代码请查看SubscriberMethodFinder类。
    * 虽然EventBus会默认通过反射获得注册函数，但是获取一次之后会缓存在一个map里面，所以不会每一次都去通过反射去获得注册函数
    * 可以很明显的看到EventBus对于扩展性，框架设计做的一些操作。并且代码简单易懂，不会像系统源码那样一个类就几千行。还是很值得阅读的入门级别的源码。
+   
 #### 不论是设计模式，还是ThreadLocal，Executor，反射注解的运用，EventBus都是一个很值得阅读的框架源码。
+
 ---
 EventBus is a publish/subscribe event bus optimized for Android.<br/>
 <img src="EventBus-Publish-Subscribe.png" width="500" height="187"/>
