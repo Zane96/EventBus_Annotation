@@ -105,11 +105,17 @@ public class EventBus {
     }
 
     EventBus(EventBusBuilder builder) {
+        //key订阅事件，value订阅这个事件的所有订阅者集合
         subscriptionsByEventType = new HashMap<>();
+        //key订阅者对象，value这个订阅者对象的所有订阅事件
         typesBySubscriber = new HashMap<>();
+        //粘性事件 key:粘性事件的class对象, value:事件对象
         stickyEvents = new ConcurrentHashMap<>();
+        //事件主线程处理
         mainThreadPoster = new HandlerPoster(this, Looper.getMainLooper(), 10);
+        //事件 Background 处理
         backgroundPoster = new BackgroundPoster(this);
+        //事件异步线程处理
         asyncPoster = new AsyncPoster(this);
         indexCount = builder.subscriberInfoIndexes != null ? builder.subscriberInfoIndexes.size() : 0;
         subscriberMethodFinder = new SubscriberMethodFinder(builder.subscriberInfoIndexes,
@@ -131,10 +137,13 @@ public class EventBus {
      * The {@link Subscribe} annotation also allows configuration like {@link
      * ThreadMode} and priority.
      */
+    //获得注册了的事件监听的类，然后通过类获得class实例，通过findSubscriberMethods拿到这个类的所有的
+    //订阅函数（反射）
     public void register(Object subscriber) {
         Class<?> subscriberClass = subscriber.getClass();
         List<SubscriberMethod> subscriberMethods = subscriberMethodFinder.findSubscriberMethods(subscriberClass);
         synchronized (this) {
+            //拿到订阅函数的集合之后，开始进行订阅的操作
             for (SubscriberMethod subscriberMethod : subscriberMethods) {
                 subscribe(subscriber, subscriberMethod);
             }
@@ -142,9 +151,13 @@ public class EventBus {
     }
 
     // Must be called in synchronized block
+    //订阅应该是一个串行的动作，所以需要在同步代码块里面进行操作
     private void subscribe(Object subscriber, SubscriberMethod subscriberMethod) {
+        //通过订阅函数信息类里面获得他所订阅的事件的类型
         Class<?> eventType = subscriberMethod.eventType;
+        //通过订阅函数和订阅对象创建一个订阅者对象
         Subscription newSubscription = new Subscription(subscriber, subscriberMethod);
+        //判断是不是已经添加过了对于evenType作为key，某一个订阅者集合作为value的条目。添加过了就抛出异常
         CopyOnWriteArrayList<Subscription> subscriptions = subscriptionsByEventType.get(eventType);
         if (subscriptions == null) {
             subscriptions = new CopyOnWriteArrayList<>();
@@ -156,6 +169,8 @@ public class EventBus {
             }
         }
 
+        //通过判断新要加入订阅的函数的优先度和之前队列里面已经存在的函数的优先度进行判断
+        //然后将newSubscription放入合适的位置。（优先度从小到大排列）
         int size = subscriptions.size();
         for (int i = 0; i <= size; i++) {
             if (i == size || subscriberMethod.priority > subscriptions.get(i).subscriberMethod.priority) {
@@ -164,6 +179,7 @@ public class EventBus {
             }
         }
 
+        //在看是否已经存在订阅者对象作为key，订阅事件集合作为value的条目
         List<Class<?>> subscribedEvents = typesBySubscriber.get(subscriber);
         if (subscribedEvents == null) {
             subscribedEvents = new ArrayList<>();
@@ -171,6 +187,10 @@ public class EventBus {
         }
         subscribedEvents.add(eventType);
 
+        //sticky（粘连事件）解释：默认为false，如果为true，当通过postSticky发送一个事件时，这个类型的事件的最后一次事件会被缓存起来，
+        //当有订阅者注册时，会把之前缓存起来的这个事件直接发送给它。使用在比如事件发送者先启动了，订阅者还没启动的情况。
+
+        //如果粘连事件的变量是true
         if (subscriberMethod.sticky) {
             if (eventInheritance) {
                 // Existing sticky events of all subclasses of eventType have to be considered.

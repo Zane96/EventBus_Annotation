@@ -38,8 +38,13 @@ class SubscriberMethodFinder {
     private static final int MODIFIERS_IGNORE = Modifier.ABSTRACT | Modifier.STATIC | BRIDGE | SYNTHETIC;
     private static final Map<Class<?>, List<SubscriberMethod>> METHOD_CACHE = new ConcurrentHashMap<>();
 
+
     private List<SubscriberInfoIndex> subscriberInfoIndexes;
+
     private final boolean strictMethodVerification;
+
+    //这个变量是用来判断是否忽略注解生成器的。如果忽略那么就直接用反射获取订阅信息，如果
+    //不忽略那就直接通过读取EventBusAnnotationProcessor注解处理器在编译期间读取的注解信息
     private final boolean ignoreGeneratedIndex;
 
     private static final int POOL_SIZE = 4;
@@ -52,21 +57,26 @@ class SubscriberMethodFinder {
         this.ignoreGeneratedIndex = ignoreGeneratedIndex;
     }
 
+    //获得一个订阅事件和订阅函数的hashmap返回给EventBus，然后EventBus再去做具体的订阅操作
     List<SubscriberMethod> findSubscriberMethods(Class<?> subscriberClass) {
+        //先判断之前有没有注册，如果注册了直接把它对应的注册函数返回出去
         List<SubscriberMethod> subscriberMethods = METHOD_CACHE.get(subscriberClass);
         if (subscriberMethods != null) {
             return subscriberMethods;
         }
 
+        //看上面对这个变量的注释，通过这个变量进行两种方式的获取订阅信息
         if (ignoreGeneratedIndex) {
             subscriberMethods = findUsingReflection(subscriberClass);
         } else {
             subscriberMethods = findUsingInfo(subscriberClass);
         }
+        //如果订阅函数存在并且数量为空，那么就说明父类和子类都不存在一个public修饰的订阅函数，抛出异常
         if (subscriberMethods.isEmpty()) {
             throw new EventBusException("Subscriber " + subscriberClass
                     + " and its super classes have no public methods with the @Subscribe annotation");
         } else {
+            //如果一切条件都满足，那么将数据put进去，并且返回给EventBus
             METHOD_CACHE.put(subscriberClass, subscriberMethods);
             return subscriberMethods;
         }
@@ -92,6 +102,7 @@ class SubscriberMethodFinder {
         return getMethodsAndRelease(findState);
     }
 
+    //将findstate对象存入静态数组里面，并且静态数组的长度最大是4，放进去的目的是进行重用
     private List<SubscriberMethod> getMethodsAndRelease(FindState findState) {
         List<SubscriberMethod> subscriberMethods = new ArrayList<>(findState.subscriberMethods);
         findState.recycle();
@@ -106,6 +117,7 @@ class SubscriberMethodFinder {
         return subscriberMethods;
     }
 
+    //判断这个state是否已经存在，进行重用，不在才new
     private FindState prepareFindState() {
         synchronized (FIND_STATE_POOL) {
             for (int i = 0; i < POOL_SIZE; i++) {
@@ -138,10 +150,14 @@ class SubscriberMethodFinder {
     }
 
     private List<SubscriberMethod> findUsingReflection(Class<?> subscriberClass) {
+        //初始化FindState类中的订阅者类
         FindState findState = prepareFindState();
         findState.initForSubscriber(subscriberClass);
+        //通过initForSubscriber方法初始化了之后clazz变量就不为空了
         while (findState.clazz != null) {
+            //将所有符合条件的注册函数添加到FindState的list里面去
             findUsingReflectionInSingleClass(findState);
+            //查阅父类的请阅信息
             findState.moveToSuperclass();
         }
         return getMethodsAndRelease(findState);
@@ -149,6 +165,7 @@ class SubscriberMethodFinder {
 
     private void findUsingReflectionInSingleClass(FindState findState) {
         Method[] methods;
+        //通过反射获取这个类所有的函数
         try {
             // This is faster than getMethods, especially when subscribers are fat classes like Activities
             methods = findState.clazz.getDeclaredMethods();
@@ -159,24 +176,35 @@ class SubscriberMethodFinder {
         }
         for (Method method : methods) {
             int modifiers = method.getModifiers();
+            //这个函数必须是public并且不能是抽象或者静态的
             if ((modifiers & Modifier.PUBLIC) != 0 && (modifiers & MODIFIERS_IGNORE) == 0) {
                 Class<?>[] parameterTypes = method.getParameterTypes();
+                //这里的参数就是Event，所以必须为1
                 if (parameterTypes.length == 1) {
+                    //获取这个注册函数的注解（ThreadMode, sticky, priority）
                     Subscribe subscribeAnnotation = method.getAnnotation(Subscribe.class);
                     if (subscribeAnnotation != null) {
+                        //取出这个event类的class
                         Class<?> eventType = parameterTypes[0];
+                        //判断这个类的这个方法合不合乎添加到队列里面去的要求
                         if (findState.checkAdd(method, eventType)) {
+                            //如果符合要求就把声明的发生线程取出来
                             ThreadMode threadMode = subscribeAnnotation.threadMode();
+                            //开始添加到一个list里面去
                             findState.subscriberMethods.add(new SubscriberMethod(method, eventType, threadMode,
                                     subscribeAnnotation.priority(), subscribeAnnotation.sticky()));
                         }
                     }
-                } else if (strictMethodVerification && method.isAnnotationPresent(Subscribe.class)) {
+                }
+                //如果不满足参数必须有一个的条件就抛异常
+                else if (strictMethodVerification && method.isAnnotationPresent(Subscribe.class)) {
                     String methodName = method.getDeclaringClass().getName() + "." + method.getName();
                     throw new EventBusException("@Subscribe method " + methodName +
                             "must have exactly 1 parameter but has " + parameterTypes.length);
                 }
-            } else if (strictMethodVerification && method.isAnnotationPresent(Subscribe.class)) {
+            }
+            //如果不满足必须是public和必须不是抽象和静态，那么就抛异常
+            else if (strictMethodVerification && method.isAnnotationPresent(Subscribe.class)) {
                 String methodName = method.getDeclaringClass().getName() + "." + method.getName();
                 throw new EventBusException(methodName +
                         " is a illegal @Subscribe method: must be public, non-static, and non-abstract");
@@ -219,6 +247,9 @@ class SubscriberMethodFinder {
         boolean checkAdd(Method method, Class<?> eventType) {
             // 2 level check: 1st level with event type only (fast), 2nd level with complete signature when required.
             // Usually a subscriber doesn't have methods listening to the same event type.
+            //将这个方法和事件类的class通过键值对的形式存到map中去，前提是不允许有两个函数去监听同一个事件，如果之前这个map里面已经有了一个方法
+            //订阅了这个key，那么就要去看之前存在的那个函数的类的子类总是否有这个函数，没有就表示
+            //这个两个方法不在同一个类里面，成立，如果子类中有这个方法，那就不符合要求抛出异常
             Object existing = anyMethodByEventType.put(eventType, method);
             if (existing == null) {
                 return true;
@@ -253,6 +284,7 @@ class SubscriberMethodFinder {
             }
         }
 
+        //如果没有设置跳过父类，那么通过当前类获得父类的class，并且如果是系统文件，那么就忽略
         void moveToSuperclass() {
             if (skipSuperClasses) {
                 clazz = null;
