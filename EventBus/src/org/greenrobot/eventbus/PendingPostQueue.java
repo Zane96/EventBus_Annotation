@@ -16,11 +16,13 @@
 
 package org.greenrobot.eventbus;
 
+//模拟一个队列出来
 final class PendingPostQueue {
     private PendingPost head;
     private PendingPost tail;
 
     synchronized void enqueue(PendingPost pendingPost) {
+        //将传进来的参数添加到队尾
         if (pendingPost == null) {
             throw new NullPointerException("null cannot be enqueued");
         }

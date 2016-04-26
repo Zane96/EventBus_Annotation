@@ -22,6 +22,7 @@ import android.os.SystemClock;
 
 final class HandlerPoster extends Handler {
 
+    //持有一个队列
     private final PendingPostQueue queue;
     private final int maxMillisInsideHandleMessage;
     private final EventBus eventBus;
@@ -38,6 +39,7 @@ final class HandlerPoster extends Handler {
         PendingPost pendingPost = PendingPost.obtainPendingPost(subscription, event);
         synchronized (this) {
             queue.enqueue(pendingPost);
+            //保证现在没出处理其他的事件发布
             if (!handlerActive) {
                 handlerActive = true;
                 if (!sendMessage(obtainMessage())) {

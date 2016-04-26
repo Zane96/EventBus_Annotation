@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
  * Create a new builder using {@link EventBus#builder()}.
  */
 public class EventBusBuilder {
+    //新开一个线程池
     private final static ExecutorService DEFAULT_EXECUTOR_SERVICE = Executors.newCachedThreadPool();
 
     boolean logSubscriberExceptions = true;

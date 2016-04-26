@@ -24,6 +24,7 @@ import android.util.Log;
  */
 final class BackgroundPoster implements Runnable {
 
+    //同样持有一个待post的队列
     private final PendingPostQueue queue;
     private final EventBus eventBus;
 
@@ -35,11 +36,13 @@ final class BackgroundPoster implements Runnable {
     }
 
     public void enqueue(Subscription subscription, Object event) {
+        //同样也是先看有没有这种类型的PendingPost
         PendingPost pendingPost = PendingPost.obtainPendingPost(subscription, event);
         synchronized (this) {
             queue.enqueue(pendingPost);
             if (!executorRunning) {
                 executorRunning = true;
+                //拿到线程池去执行这个线程
                 eventBus.getExecutorService().execute(this);
             }
         }
